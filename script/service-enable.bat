@@ -1,1 +1,1 @@
-call gcloud services enable vision.googleapis.com cloudfunctions.googleapis.com
+call gcloud services enable vision.googleapis.com cloudfunctions.googleapis.com cloudbuild.googleapis.com run.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com eventarc.googleapis.com

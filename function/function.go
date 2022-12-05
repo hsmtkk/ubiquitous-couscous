@@ -11,7 +11,7 @@ import (
 func init() {
 	functions.HTTP("receive", receive)
 	functions.CloudEvent("process", process)
-	functions.CloudEvent("send", process)
+	functions.CloudEvent("send", send)
 }
 
 func receive(w http.ResponseWriter, r *http.Request) {

@@ -22,12 +22,25 @@ class MyStack extends TerraformStack {
       accountId: 'service-runner',
     });
 
+    new google.projectIamBinding.ProjectIamBinding(this, 'allow-secret-manager', {
+      members: [`serviceAccount:${service_runner.email}`],
+      project,
+      role: 'roles/secretmanager.secretAccessor',
+    });
+
     const wait_process = new google.pubsubTopic.PubsubTopic(this, 'wait-process', {
       name: 'wait-process',
     });    
 
     const wait_send = new google.pubsubTopic.PubsubTopic(this, 'wait-send', {
       name: 'wait-send',
+    });
+
+    const channel_access_token = new google.secretManagerSecret.SecretManagerSecret(this, 'channel-access-token', {
+      secretId: 'channel-access-token',
+      replication: {
+        automatic: true,
+      },
     });
 
     const function_asset = new TerraformAsset(this, 'function-asset', {
@@ -71,6 +84,8 @@ class MyStack extends TerraformStack {
         environmentVariables: {
           'WAIT_PROCESS_TOPIC': wait_process.name,
         },
+        minInstanceCount: 0,
+        maxInstanceCount: 1,
         serviceAccountEmail: service_runner.email,
       },
     });
@@ -99,12 +114,19 @@ class MyStack extends TerraformStack {
           },
         },
       },
+      eventTrigger: {
+        eventType: 'google.cloud.pubsub.topic.v1.messagePublished',
+        pubsubTopic: wait_process.id,
+      },
       location: region,
       name: 'process-function',
       serviceConfig: {
         environmentVariables: {
           'WAIT_SEND_TOPIC': wait_send.name,
         },
+        ingressSettings: 'ALLOW_INTERNAL_ONLY',
+        minInstanceCount: 0,
+        maxInstanceCount: 1,
         serviceAccountEmail: service_runner.email,
       },      
     });
@@ -120,9 +142,19 @@ class MyStack extends TerraformStack {
           },
         },
       },
+      eventTrigger: {
+        eventType: 'google.cloud.pubsub.topic.v1.messagePublished',
+        pubsubTopic: wait_send.id,
+      },
       location: region,
       name: 'send-function',
       serviceConfig: {
+        environmentVariables: {
+          'CHANNEL_ACCESS_TOKEN': channel_access_token.name,
+        },
+        ingressSettings: 'ALLOW_INTERNAL_ONLY',
+        minInstanceCount: 0,
+        maxInstanceCount: 1,
         serviceAccountEmail: service_runner.email,
       },      
     });
