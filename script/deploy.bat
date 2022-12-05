@@ -1,0 +1,1 @@
+cdktf deploy --auto-approve
