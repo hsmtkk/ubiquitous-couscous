@@ -28,6 +28,18 @@ class MyStack extends TerraformStack {
       role: 'roles/secretmanager.secretAccessor',
     });
 
+    new google.projectIamBinding.ProjectIamBinding(this, 'allow-pubsub-publish', {
+      members: [`serviceAccount:${service_runner.email}`],
+      project,
+      role: 'roles/pubsub.publisher',
+    });
+
+    new google.projectIamBinding.ProjectIamBinding(this, 'allow-pubsub-subscribe', {
+      members: [`serviceAccount:${service_runner.email}`],
+      project,
+      role: 'roles/pubsub.subscriber',
+    });
+
     const wait_process = new google.pubsubTopic.PubsubTopic(this, 'wait-process', {
       name: 'wait-process',
     });    
@@ -82,6 +94,7 @@ class MyStack extends TerraformStack {
       name: 'receive-function',
       serviceConfig: {
         environmentVariables: {
+          'PROJECT_ID': project,
           'WAIT_PROCESS_TOPIC': wait_process.name,
         },
         minInstanceCount: 0,
@@ -122,6 +135,7 @@ class MyStack extends TerraformStack {
       name: 'process-function',
       serviceConfig: {
         environmentVariables: {
+          'PROJECT_ID': project,
           'WAIT_SEND_TOPIC': wait_send.name,
         },
         ingressSettings: 'ALLOW_INTERNAL_ONLY',
@@ -150,6 +164,7 @@ class MyStack extends TerraformStack {
       name: 'send-function',
       serviceConfig: {
         environmentVariables: {
+          'PROJECT_ID': project,
           'CHANNEL_ACCESS_TOKEN': channel_access_token.name,
         },
         ingressSettings: 'ALLOW_INTERNAL_ONLY',
