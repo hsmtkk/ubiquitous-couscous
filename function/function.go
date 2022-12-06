@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -20,8 +21,22 @@ func init() {
 	functions.CloudEvent("send", send)
 }
 
+type lineWebHook struct {
+	Events []lineEvent `json:"events"`
+}
+
+type lineEvent struct {
+	ReplyToken       string           `json:"replyToken"`
+	LineEventMessage lineEventMessage `json:"message"`
+}
+
+type lineEventMessage struct {
+	ID string `json:"id"`
+}
+
 type processMessage struct {
-	Dummy string
+	ImageID    string
+	ReplyToken string
 }
 
 type sendMessage struct {
@@ -41,13 +56,16 @@ func receive(w http.ResponseWriter, r *http.Request) {
 	projectID := os.Getenv("PROJECT_ID")
 	waitProcessTopic := os.Getenv("WAIT_PROCESS_TOPIC")
 
-	msg := processMessage{Dummy: "dummy"}
-	msgBytes, err := json.Marshal(msg)
+	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		returnError(w, http.StatusInternalServerError, err)
 		return
 	}
-
+	var lineWebHook lineWebHook
+	if err := json.Unmarshal(reqBody, &lineWebHook); err != nil {
+		returnError(w, http.StatusInternalServerError, err)
+		return
+	}
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		returnError(w, http.StatusInternalServerError, err)
@@ -55,14 +73,21 @@ func receive(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 	topic := client.Topic(waitProcessTopic)
-	result := topic.Publish(ctx, &pubsub.Message{Data: msgBytes})
-	id, err := result.Get(ctx)
-	if err != nil {
-		returnError(w, http.StatusInternalServerError, err)
-		return
+	for _, evt := range lineWebHook.Events {
+		msg := processMessage{ImageID: evt.LineEventMessage.ID, ReplyToken: evt.ReplyToken}
+		msgBytes, err := json.Marshal(msg)
+		if err != nil {
+			returnError(w, http.StatusInternalServerError, err)
+			return
+		}
+		result := topic.Publish(ctx, &pubsub.Message{Data: msgBytes})
+		id, err := result.Get(ctx)
+		if err != nil {
+			returnError(w, http.StatusInternalServerError, err)
+			return
+		}
+		log.Printf("publish: %s", id)
 	}
-	log.Printf("publish: %s", id)
-
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("receive"))
 }
