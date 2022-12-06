@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/pubsub"
 	vision "cloud.google.com/go/vision/apiv1"
@@ -169,6 +170,8 @@ func send(ctx context.Context, evt event.Event) error {
 	log.Printf("send")
 	log.Printf("request: %v", evt)
 
+	projectID := os.Getenv("PROJECT_ID")
+
 	var subMsg messagePublishedData
 	if err := evt.DataAs(&subMsg); err != nil {
 		return fmt.Errorf("event.Event.DataAs failed; %w", err)
@@ -180,6 +183,19 @@ func send(ctx context.Context, evt event.Event) error {
 
 	log.Printf("reply token: %s", sendMsg.ReplyToken)
 	log.Printf("labels: %v", sendMsg.Labels)
+
+	text := strings.Join(sendMsg.Labels, "\n")
+
+	channelAccessToken, err := getSecret(ctx, projectID, "channel-access-token")
+	if err != nil {
+		return err
+	}
+	log.Print("get secret")
+
+	if err := sendReply(channelAccessToken, sendMsg.ReplyToken, text); err != nil {
+		return err
+	}
+	log.Print("send reply")
 
 	return nil
 }
@@ -247,4 +263,42 @@ func analyzeImage(ctx context.Context, imageBytes []byte) ([]string, error) {
 		results = append(results, label.Description)
 	}
 	return results, nil
+}
+
+type replyFormat struct {
+	ReplyToken string               `json:"replyToken"`
+	Messages   []replyFormatMessage `json:"messages"`
+}
+
+type replyFormatMessage struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+func sendReply(channelAccessToken, replyToken, text string) error {
+	url := "https://api.line.me/v2/bot/message/reply"
+	reply := replyFormat{
+		ReplyToken: replyToken,
+		Messages: []replyFormatMessage{{
+			Type: "text",
+			Text: text,
+		}},
+	}
+	replyBytes, err := json.Marshal(reply)
+	if err != nil {
+		return fmt.Errorf("json.Marshal failed; %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(replyBytes))
+	if err != nil {
+		return fmt.Errorf("http.NewRequest failed; %w", err)
+	}
+	req.Header = make(http.Header)
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("http.DefaultClient.Get failed; %w", err)
+	}
+	defer resp.Body.Close()
+	return nil
 }
