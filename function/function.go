@@ -214,6 +214,7 @@ func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http.NewRequest failed; %w", err)
 	}
+	req.Header = make(http.Header)
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
