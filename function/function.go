@@ -237,15 +237,10 @@ func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
 		return nil, fmt.Errorf("http.DefaultClient.Get failed; %w", err)
 	}
 	defer resp.Body.Close()
-
-	// debug
-	dumpResp, err := httputil.DumpResponse(resp, true)
-	log.Printf("dump response: %s", string(dumpResp))
-
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("non 200 HTTP status code; %d; %s", resp.StatusCode, resp.Status)
 	}
-	respBytes, err := io.ReadAll(req.Body)
+	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("io.ReadAll failed; %w", err)
 	}
