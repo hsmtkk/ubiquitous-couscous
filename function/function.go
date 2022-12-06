@@ -159,7 +159,7 @@ func process(ctx context.Context, evt event.Event) error {
 	result := topic.Publish(ctx, &pubsub.Message{Data: msgBytes})
 	id, err := result.Get(ctx)
 	if err != nil {
-		return fmt.Errorf("")
+		return fmt.Errorf("pubsub.PublishResult.Get failed; %w", err)
 	}
 	log.Printf("publish: %s", id)
 
@@ -230,7 +230,6 @@ func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http.NewRequest failed; %w", err)
 	}
-	req.Header = make(http.Header)
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -295,7 +294,6 @@ func sendReply(channelAccessToken, replyToken, text string) error {
 	if err != nil {
 		return fmt.Errorf("http.NewRequest failed; %w", err)
 	}
-	req.Header = make(http.Header)
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
