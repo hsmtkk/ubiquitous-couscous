@@ -40,7 +40,15 @@ type processMessage struct {
 }
 
 type sendMessage struct {
-	Dummy string
+	ReplyToken string
+}
+
+type messagePublishedData struct {
+	Message pubSubMessage
+}
+
+type pubSubMessage struct {
+	Data []byte `json:"data"`
 }
 
 func receive(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +107,19 @@ func process(ctx context.Context, evt event.Event) error {
 	projectID := os.Getenv("PROJECT_ID")
 	waitSendTopic := os.Getenv("WAIT_SEND_TOPIC")
 
-	msg := sendMessage{Dummy: "dummy"}
+	var subMsg messagePublishedData
+	if err := evt.DataAs(&subMsg); err != nil {
+		return fmt.Errorf("event.Event.DataAs failed; %w", err)
+	}
+	var procMsg processMessage
+	if err := json.Unmarshal(subMsg.Message.Data, &procMsg); err != nil {
+		return fmt.Errorf("json.Unmarshal failed; %w", err)
+	}
+
+	log.Printf("image ID: %s", procMsg.ImageID)
+	log.Printf("reply token: %s", procMsg.ReplyToken)
+
+	msg := sendMessage{ReplyToken: "dummy"}
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("json.Marshal failed; %w", err)
@@ -124,6 +144,18 @@ func process(ctx context.Context, evt event.Event) error {
 func send(ctx context.Context, evt event.Event) error {
 	log.Printf("send")
 	log.Printf("request: %v", evt)
+
+	var subMsg messagePublishedData
+	if err := evt.DataAs(&subMsg); err != nil {
+		return fmt.Errorf("event.Event.DataAs failed; %w", err)
+	}
+	var sendMsg sendMessage
+	if err := json.Unmarshal(subMsg.Message.Data, &sendMsg); err != nil {
+		return fmt.Errorf("json.Unmarshal failed; %w", err)
+	}
+
+	log.Printf("reply token: %s", sendMsg.ReplyToken)
+
 	return nil
 }
 
@@ -133,4 +165,27 @@ func returnError(w http.ResponseWriter, code int, err error) {
 	if _, err := w.Write([]byte(err.Error())); err != nil {
 		log.Printf("http.ResponseWriter.Write failed; %v", err.Error())
 	}
+}
+
+func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
+	url := fmt.Sprintf("https://api-data.line.me/v2/bot/message/%s/content", imageID)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("http.NewRequest failed; %w", err)
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http.DefaultClient.Get failed; %w", err)
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, fmt.Errorf("io.ReadAll failed; %w", err)
+	}
+	return respBytes, nil
+}
+
+func analyzeImage(ctx context.Context, image []byte) error {
+	return nil
 }
