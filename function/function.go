@@ -1,6 +1,7 @@
 package function
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,8 +12,12 @@ import (
 	"os"
 
 	"cloud.google.com/go/pubsub"
+	vision "cloud.google.com/go/vision/apiv1"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"github.com/cloudevents/sdk-go/v2/event"
+
+	secretmanager "cloud.google.com/go/secretmanager/apiv1"
+	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 )
 
 func init() {
@@ -41,6 +46,7 @@ type processMessage struct {
 
 type sendMessage struct {
 	ReplyToken string
+	Labels     []string
 }
 
 type messagePublishedData struct {
@@ -119,7 +125,20 @@ func process(ctx context.Context, evt event.Event) error {
 	log.Printf("image ID: %s", procMsg.ImageID)
 	log.Printf("reply token: %s", procMsg.ReplyToken)
 
-	msg := sendMessage{ReplyToken: "dummy"}
+	channelAccessToken, err := getSecret(ctx, projectID, "channel-access-token")
+	if err != nil {
+		return err
+	}
+	image, err := downloadImage(channelAccessToken, procMsg.ImageID)
+	if err != nil {
+		return err
+	}
+	labels, err := analyzeImage(ctx, image)
+	if err != nil {
+		return err
+	}
+
+	msg := sendMessage{ReplyToken: procMsg.ReplyToken, Labels: labels}
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("json.Marshal failed; %w", err)
@@ -155,6 +174,7 @@ func send(ctx context.Context, evt event.Event) error {
 	}
 
 	log.Printf("reply token: %s", sendMsg.ReplyToken)
+	log.Printf("labels: %v", sendMsg.Labels)
 
 	return nil
 }
@@ -165,6 +185,22 @@ func returnError(w http.ResponseWriter, code int, err error) {
 	if _, err := w.Write([]byte(err.Error())); err != nil {
 		log.Printf("http.ResponseWriter.Write failed; %v", err.Error())
 	}
+}
+
+func getSecret(ctx context.Context, projectID, secretName string) (string, error) {
+	clt, err := secretmanager.NewClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("secretmanager.NewClient failed; %w", err)
+	}
+	defer clt.Close()
+	req := &secretmanagerpb.AccessSecretVersionRequest{
+		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/latest", projectID, secretName),
+	}
+	resp, err := clt.AccessSecretVersion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("secretmanager.Client.AccessSecretVersion failed; %w", err)
+	}
+	return string(resp.Payload.Data), nil
 }
 
 func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
@@ -186,6 +222,23 @@ func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
 	return respBytes, nil
 }
 
-func analyzeImage(ctx context.Context, image []byte) error {
-	return nil
+func analyzeImage(ctx context.Context, imageBytes []byte) ([]string, error) {
+	client, err := vision.NewImageAnnotatorClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("vision.NewImageAnnotatorClient failed; %w", err)
+	}
+	defer client.Close()
+	image, err := vision.NewImageFromReader(bytes.NewReader(imageBytes))
+	if err != nil {
+		return nil, fmt.Errorf("vision.NewImageFromReader failed; %w", err)
+	}
+	labels, err := client.DetectLabels(ctx, image, nil, 10)
+	if err != nil {
+		return nil, fmt.Errorf("")
+	}
+	results := []string{}
+	for _, label := range labels {
+		results = append(results, label.Description)
+	}
+	return results, nil
 }
