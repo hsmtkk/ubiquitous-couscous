@@ -129,14 +129,19 @@ func process(ctx context.Context, evt event.Event) error {
 	if err != nil {
 		return err
 	}
+	log.Print("get secret")
+
 	image, err := downloadImage(channelAccessToken, procMsg.ImageID)
 	if err != nil {
 		return err
 	}
+	log.Print("download image")
+
 	labels, err := analyzeImage(ctx, image)
 	if err != nil {
 		return err
 	}
+	log.Printf("labels: %v\n", labels)
 
 	msg := sendMessage{ReplyToken: procMsg.ReplyToken, Labels: labels}
 	msgBytes, err := json.Marshal(msg)
@@ -209,7 +214,7 @@ func downloadImage(channelAccessToken, imageID string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http.NewRequest failed; %w", err)
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", channelAccessToken))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("http.DefaultClient.Get failed; %w", err)
@@ -234,7 +239,7 @@ func analyzeImage(ctx context.Context, imageBytes []byte) ([]string, error) {
 	}
 	labels, err := client.DetectLabels(ctx, image, nil, 10)
 	if err != nil {
-		return nil, fmt.Errorf("")
+		return nil, fmt.Errorf("vision.ImageAnnotatorClient.DetectLabels failed; %w", err)
 	}
 	results := []string{}
 	for _, label := range labels {
